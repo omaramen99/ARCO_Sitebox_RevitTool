@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Text>Command ConcreteWallFraming</Text>
+    <Description>Some description for ConcreteWallFraming</Description>
+    <Assembly>ConcreteWallFraming.dll</Assembly>
+    <FullClassName>ConcreteWallFraming.Command</FullClassName>
+    <ClientId>6c3bafec-1e41-4e0d-8ab4-d9edfe5df7dd</ClientId>
+    <VendorId>com.typepad.thebuildingcoder</VendorId>
+    <VendorDescription>The Building Coder, http://thebuildingcoder.typepad.com</VendorDescription>
+  </AddIn>
+  <AddIn Type="Application">
+    <Name>Application ConcreteWallFraming</Name>
+    <Assembly>ConcreteWallFraming.dll</Assembly>
+    <FullClassName>ConcreteWallFraming.App</FullClassName>
+    <ClientId>4a95f4b9-df53-4f89-9898-59d78f0a9ed9</ClientId>
+    <VendorId>com.typepad.thebuildingcoder</VendorId>
+    <VendorDescription>The Building Coder, http://thebuildingcoder.typepad.com</VendorDescription>
+  </AddIn>
+</RevitAddIns>
