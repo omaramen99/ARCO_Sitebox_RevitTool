@@ -14,6 +14,8 @@ using System.Reflection;
 using System.IO;
 using ConcreteWallFraming.Core;
 using ConcreteWallFraming.Core.PDFProcessor;
+using ConcreteWallFraming.Core.RVTProcessor;
+using ConcreteWallFraming.Core.DWGProcessor;
 
 
 #endregion
@@ -63,8 +65,9 @@ namespace ConcreteWallFraming
             #endregion
 
            
-            PDF_ProcessingCore.ProcessPDF(doc);
-
+            //PDF_ProcessingCore.ProcessPDF(doc);
+            //DWG_ProcessingCore.ProcessDWG(doc);
+            RVT_ProcessingCore.ProcessRVT(doc);
 
 
 

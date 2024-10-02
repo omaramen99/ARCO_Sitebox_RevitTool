@@ -22,6 +22,7 @@ namespace ConcreteWallFraming.Core.PDFProcessor
         public static void ProcessPDF(Document doc)
         {
             List<PDFSheetAssemblyData> PDFResult = PDF_Analyzer.Core.PDFAnalyze_Run(false);
+
             List<AssemblyInstance> generatedAssemblies = new List<AssemblyInstance>();
             if (PDFResult.Any())
             {
