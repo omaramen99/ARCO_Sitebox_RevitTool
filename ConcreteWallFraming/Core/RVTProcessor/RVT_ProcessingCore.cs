@@ -20,32 +20,159 @@ namespace ConcreteWallFraming.Core.RVTProcessor
 {
     public class RVT_ProcessingCore
     {
+        static int ii = 100;
+        public static string GetPanelName(XYZ wallBasePoint, XYZ direction, List<PanelTagObject> panelTagObjects)
+        {
+            XYZ wallBasePoint_2D = new XYZ(wallBasePoint.X, wallBasePoint.Y, 0);
+            List<PanelTagObject> _panelTagObjects = panelTagObjects.Where(o => o.Direction.IsAlmostEqualTo(direction.Normalize()) || o.Direction.IsAlmostEqualTo(direction.Normalize() * -1)).OrderBy(o => o.ReferencePoint_2D.DistanceTo(wallBasePoint_2D)).ToList();
+            PanelTagObject panelTagObject = _panelTagObjects.Where(o => !o.IsUsed).FirstOrDefault();//panelTagObjects.Where(o => o.Direction.IsAlmostEqualTo(direction.Normalize()) || o.Direction.IsAlmostEqualTo(direction.Normalize() * -1)).Where(o => !o.IsUsed).OrderBy(o => o.ReferencePoint_2D.DistanceTo(wallBasePoint_2D)).FirstOrDefault();
+            if (panelTagObject != null)
+            {
+                panelTagObject.IsUsed = true;
+                return "P" + panelTagObject.PanelNo;
+            }
+            ii++;
+            return "p" + ii;
+        }
+        public static List<PanelTagObject> PreparePanelsNames(List<Element> walls, List<double> wallThicknesses, List<List<CurveLoop>> curvesList, List<XYZ> directions, List<XYZ> origins, List<XYZ> wallBasePoints, List<PanelTagObject> panelTagObjects)
+        {
+
+            for (int i = 0; i < walls.Count; i++)
+            {
+                var wallThickness = wallThicknesses[i];
+                var curves = curvesList[i];
+                var direction = directions[i];
+                var origin = origins[i];
+                var wallBasePoint = wallBasePoints[i];
+
+                XYZ wallBasePoint_2D = new XYZ(wallBasePoint.X, wallBasePoint.Y, 0);
+
+                foreach (PanelTagObject o in panelTagObjects)
+                {
+                    if (o.Direction.IsAlmostEqualTo(direction.Normalize()) || o.Direction.IsAlmostEqualTo(direction.Normalize() * -1))
+                    {
+                        o.Walls.Add(new WallObject(walls[i], wallThickness, curves,direction,origin, wallBasePoint, o.ReferencePoint_2D.DistanceTo(wallBasePoint_2D)));
+                    }
+                }
+            }
+
+            List<PanelTagObject> ss = panelTagObjects.GroupBy(o => o.NearestWall.wall.Id.IntegerValue).Select(t => t.ToList()).Select(t => t.FirstOrDefault()).ToList();//.ForEach(g => g.OrderBy(o => o.NearestWall.distanceToTag));
+
+            return ss;
+
+
+        }
         public static void ProcessRVT(Document doc)
         {
             FilteredElementCollector fec = new FilteredElementCollector(doc);
             List<Wall> allWalls = fec.WhereElementIsNotElementType().OfClass(typeof(Wall)).Cast<Wall>().ToList();
+            List<FamilyInstance> allPanelTags = new FilteredElementCollector(doc).WhereElementIsNotElementType().OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>().Where(s => s.ViewSpecific && s.LookupParameter("Panel No") != null && s.LookupParameter("Panel No").AsString() != string.Empty && int.TryParse(s.LookupParameter("Panel No").AsString(), out int ss)).Where(s => Math.Abs( s.FacingOrientation.Z) < 0.01 ).ToList();
+            List<FamilyInstance> f_allPanelTags = allPanelTags.GroupBy(t => t.LookupParameter("Panel No").AsString()).Select(t => t.First()).ToList();
+            List<FamilyInstance> o_f_allPanelTags = f_allPanelTags.OrderBy(t => int.Parse(t.LookupParameter("Panel No").AsString())).ToList();
+            List<PanelTagObject> panelTagObjects = o_f_allPanelTags.Select(fi => new PanelTagObject(fi, int.Parse(fi.LookupParameter("Panel No").AsString()), (fi.Location as LocationPoint).Point, fi.FacingOrientation.Normalize())).ToList();
+
+
+            //List<int> nums = o_f_allPanelTags.Select(t => int.Parse(t.LookupParameter("Panel No").AsString())).ToList();
             ElementClassFilter filter = new ElementClassFilter(typeof(Part));
             List<List<Part>> allParts = allWalls.Select(w => w.GetDependentElements(filter).Select(id => doc.GetElement(id) as Part).Where(p => doc.GetElement(p.GetSourceElementIds().ToList().First().HostElementId) is Part).ToList()).ToList();
 
-            List<WallInfo> wallInfo = new List<WallInfo>();
+            
+                List<Element> walls = new List<Element>();
+                List<double> wallThicknesses = new List<double>();
+                List<List<CurveLoop>> curvesList = new List<List<CurveLoop>>();
+                List<XYZ> directions = new List<XYZ>();
+                List<XYZ> origins = new List<XYZ>();
+                List<XYZ> wallBasePoints = new List<XYZ>();
             for (int i = 0; i < allWalls.Count; i++)
             {
+
+
                 if (allParts[i].Any())
                 {
                     foreach (Part p in allParts[i])
                     {
+
                         (double wallThickness, List<CurveLoop> curves, XYZ direction, XYZ origin, XYZ wallBasePoint) = GetWallBounds(p);
-                        wallInfo.Add(new WallInfo($"P{wallInfo.Count+1}",p, allWalls[i].Id, wallThickness, curves, direction, origin, wallBasePoint));
+                        walls.Add(p);
+                        wallThicknesses.Add(wallThickness);
+                        curvesList.Add(curves);
+                        directions.Add(direction);
+                        origins.Add(origin);
+                        wallBasePoints.Add(wallBasePoint);
                     }
                 }
                 else
                 {//has no parts
 
                     (double wallThickness, List<CurveLoop> curves, XYZ direction, XYZ origin, XYZ wallBasePoint) = GetWallBounds(allWalls[i]);
-                    wallInfo.Add(new WallInfo($"P{wallInfo.Count + 1}", allWalls[i], ElementId.InvalidElementId, wallThickness, curves, direction, origin, wallBasePoint));
+                    walls.Add(allWalls[i]);
+                    wallThicknesses.Add(wallThickness);
+                    curvesList.Add(curves);
+                    directions.Add(direction);
+                    origins.Add(origin);
+                    wallBasePoints.Add(wallBasePoint);
+
+
+
                 }
             }
+            List<PanelTagObject> ssss = PreparePanelsNames(walls, wallThicknesses, curvesList, directions, origins, wallBasePoints, panelTagObjects);
 
+            List<WallInfo> wallInfo = new List<WallInfo>();
+            for (int i = 0; i < allWalls.Count; i++)
+            {
+
+                /////////////////////////////////////////////////////////
+                if (allParts[i].Any())
+                {
+                    foreach (Part p in allParts[i])
+                    {
+                        if (p.Id.IntegerValue == 1136309)
+                        {
+
+                        }
+                        (double wallThickness, List<CurveLoop> curves, XYZ direction, XYZ origin, XYZ wallBasePoint) = GetWallBounds(p);
+                        //string panelName = p.LookupParameter("Comments").AsString().Split(' ').ToList()[0];
+                        var eee = ssss.FirstOrDefault(o => o.NearestWall.wall.Id.IntegerValue == p.Id.IntegerValue);
+                        string panelName = "";
+                        if (eee != null)
+                        {
+                            panelName = "P" + eee.PanelNo;
+                        }
+                        else 
+                        {
+                        ii++;
+                        panelName = "p" + ii;
+                        
+                        }
+
+                        //string panelName = ssss.FirstOrDefault(o => o.NearestWall.wall.Id.IntegerValue == p.Id.IntegerValue).//GetPanelName(wallBasePoint, direction, panelTagObjects);
+
+                        wallInfo.Add(new WallInfo(panelName, p, allWalls[i].Id, wallThickness, curves, direction, origin, wallBasePoint));
+                    }
+                }
+                else
+                {//has no parts
+
+                    (double wallThickness, List<CurveLoop> curves, XYZ direction, XYZ origin, XYZ wallBasePoint) = GetWallBounds(allWalls[i]);
+                    //string panelName = allWalls[i].LookupParameter("Comments").AsString().Split(' ').ToList()[0];
+                    //string panelName = GetPanelName(wallBasePoint, direction, panelTagObjects);
+                    var eee = ssss.FirstOrDefault(o => o.NearestWall.wall.Id.IntegerValue == allWalls[i].Id.IntegerValue);
+                    string panelName = "";
+                    if (eee != null)
+                    {
+                        panelName = "P" + eee.PanelNo;
+                    }
+                    else 
+                    {
+                    ii++;
+                    panelName = "p" + ii;
+                    
+                    }
+                    wallInfo.Add(new WallInfo(panelName, allWalls[i], ElementId.InvalidElementId, wallThickness, curves, direction, origin, wallBasePoint));
+                }
+            }
+            wallInfo = wallInfo.OrderBy(w => int.Parse(w.Name.Substring(1))).ToList();
             List<string> names = wallInfo.Where(wi => wi.IsValid && wi.Bounds.Any()).Select(wi => wi.Name).ToList();
             List<List<PDF_Analyzer.Geometry.Rectangle>> rectanglesLists = wallInfo.Where(wi => wi.IsValid && wi.Bounds.Any()).Select(wi => wi.Bounds).ToList();
 
@@ -58,6 +185,7 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                 Assembly runningAssembly = Assembly.GetExecutingAssembly();
                 string appDirectory = runningAssembly.ManifestModule.FullyQualifiedName.Remove(runningAssembly.ManifestModule.FullyQualifiedName.Length - runningAssembly.ManifestModule.Name.Length);
                 //string setPositionBatchPath = System.IO.Path.Combine(runningAssembly.ManifestModule.FullyQualifiedName.Remove(runningAssembly.ManifestModule.FullyQualifiedName.Length - runningAssembly.ManifestModule.Name.Length), "00. Panel Shops - Field Use.pdf");
+                //C:\Users\pc\AppData\Roaming\Autodesk\Revit\Addins\2025
                 string f1 = Path.Combine(appDirectory, "Allied_ARCO_Concrete_Wall.rfa");
                 string f2 = Path.Combine(appDirectory, "Allied_ARCO_Lumber.rfa");
 
@@ -124,26 +252,66 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                 if (!lumberSymbol.IsActive) lumberSymbol.Activate();
 
 
+                //Get Lowest Z
+                double lowestZ = wallInfo.OrderBy(w => w.WallBasePoint.Z).Select(w => w.WallBasePoint.Z).FirstOrDefault();
+
+
+                ////////string lastWallGroup = "";
+                ////////int groupIndex = 0;
+                ////////XYZ lastBasePoint = new XYZ();
+                ////////List<ElementId> lastSharedLumberIds = new List<ElementId> ();
+                ////////List<XYZ> lastSharedLumberLocations = new List<XYZ> ();
+
 
                 for (int i = 0; i < PDFResult.Count; i++)
                 {
                     try
                     {
                         WallInfo wi = wallInfo.Where(w => w.Name == PDFResult[i].Name).FirstOrDefault();
+                        ////////var panelInfo = wi.Wall.LookupParameter("Comments").AsString().Split(' ').ToList();
+
+                        ////////if (lastWallGroup == panelInfo[1])
+                        ////////{
+                        ////////    groupIndex++;
+                        ////////}
+                        ////////else
+                        ////////{
+                        ////////    lastWallGroup = panelInfo[1];
+                        ////////    lastBasePoint = new XYZ();
+                        ////////    lastSharedLumberIds = new List<ElementId>();
+                        ////////    lastSharedLumberLocations = new List<XYZ>();
+                        ////////    groupIndex = 0;
+                        ////////}
                         //if (PDFResult[i].Name == "1209850") 
                         //{
 
                         //}
+                        if (wi.Wall.Id.IntegerValue == 1156144)
+                        {
+
+                        }
                         List<Element> assemblyElements = new List<Element>();
                         PDFSheetAssemblyData PDFData = PDFResult[i];
                         //symbol.LookupParameter($"H{i}").Set(0);
                         double X = wi.WallBasePoint.X + (wi.Normal.X * PDFData.Height * 0.5 * 1.1);//i * 50;
                         double Y = wi.WallBasePoint.Y + (wi.Normal.Y * PDFData.Height * 0.5 * 1.1);//0;
-                        double Z = wi.WallBasePoint.Z;//0;
+                        double Z = lowestZ;//wi.WallBasePoint.Z;//0;
+                        XYZ groupDirection = new XYZ();
+                        ////////if (groupIndex != 0) 
+                        ////////{
+                        ////////    groupDirection = (new XYZ(X, Y, Z) - lastBasePoint).Normalize();
+                        ////////    X = X + (groupDirection.X * 0.2 *groupIndex);
+                        ////////    Y = Y + (groupDirection.Y * 0.2 *groupIndex);
+                        ////////    Z = Z + (groupDirection.Z * 0.2 *groupIndex);
+                        ////////}
+                        ////////lastBasePoint = new XYZ(X, Y, Z);
+
                         FamilyInstance wallInstance = doc.Create.NewFamilyInstance(new XYZ(X, Y, Z), wallSymbol, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
                         assemblyElements.Add(wallInstance);
                         doc.Regenerate();
                         wallInstance.LookupParameter($"Unique").Set(PDFData.Name);
+                        wallInstance.LookupParameter($"Allied_Panel").Set(wi.Name);
+                        wallInstance.LookupParameter($"Allied_Group").Set("TEST");//.Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
                         wallInstance.LookupParameter($"W").Set(PDFData.Width);
                         wallInstance.LookupParameter($"H").Set(PDFData.Height);
                         wallInstance.LookupParameter($"Th").Set(wi.WallThickness);
@@ -155,14 +323,14 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                             wallInstance.LookupParameter($"W{j + 1}").Set(rec.Width);
                             wallInstance.LookupParameter($"H{j + 1}").Set(rec.Height);
 
-                            if (wi.Normal.X > 0.001 || wi.Normal.Y < - 0.001)//+X || -Y
+                            if (wi.Normal.X > 0.001 || wi.Normal.Y < -0.001)//+X || -Y
                             {
                                 wallInstance.LookupParameter($"X{j + 1}").Set(-(rec.Location.X - rec.Width));
                                 wallInstance.LookupParameter($"Y{j + 1}").Set((rec.Location.Y - rec.Height));
                             }
                             else if (wi.Normal.Y > 0.001 || wi.Normal.X < -0.001)//-X || +Y
                             {
-                                wallInstance.LookupParameter($"X{j + 1}").Set((rec.Location.X ));
+                                wallInstance.LookupParameter($"X{j + 1}").Set((rec.Location.X));
                                 wallInstance.LookupParameter($"Y{j + 1}").Set(-(rec.Location.Y));
                             }
                             else
@@ -173,6 +341,8 @@ namespace ConcreteWallFraming.Core.RVTProcessor
 
                             if (j == 19) break;
                         }
+
+
 
                         for (int j = 0; j < PDFData.Lumbers.Count; j++)
                         {
@@ -196,12 +366,17 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                                 y = Y + rec.Location.Y;
                             }
 
+                            XYZ refPoint = new XYZ((groupDirection.X * x), (groupDirection.Y * y), 0);
+
+
 
 
                             FamilyInstance lumberInstance = doc.Create.NewFamilyInstance(new XYZ(x, y, Z), lumberSymbol, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
                             assemblyElements.Add(lumberInstance);
                             double w = rec.Width;
                             double h = rec.Height;
+                            lumberInstance.LookupParameter($"Allied_Panel").Set(wi.Name);
+                            lumberInstance.LookupParameter($"Allied_Group").Set("TEST"); //Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
                             lumberInstance.LookupParameter($"W").Set(w);
                             lumberInstance.LookupParameter($"H").Set(h);
                             lumberInstance.LookupParameter($"Th").Set(wi.WallThickness + 0.2);
@@ -237,7 +412,7 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                 Transaction t = new Transaction(doc);
 
                 /**/
-                t.Start("rename");
+                t.Start("PostProcessing");
 
                 /**/
                 for (int i = 0; i < PDFResult.Count; i++)
@@ -254,9 +429,10 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                         {
                             var bx = generatedAssemblies[i].get_BoundingBox(null);
                             XYZ md = generatedAssemblies[i].GetCenter();// new XYZ((bx.Max.X + bx.Min.X) / 2, (bx.Max.Y + bx.Min.Y) / 2, (bx.Max.Z + bx.Min.Z) / 2);
-                            ElementTransformUtils.RotateElement(doc, generatedAssemblies[i].Id, Line.CreateUnbound(md, new XYZ(0,0,1)), 1.5708);
+                            ElementTransformUtils.RotateElement(doc, generatedAssemblies[i].Id, Line.CreateUnbound(md, new XYZ(0, 0, 1)), 1.5708);
                         }
-                            generatedAssemblies[i].AddMemberIds(new List<ElementId>() { wi.Wall.Id });
+                        generatedAssemblies[i].AddMemberIds(new List<ElementId>() { wi.Wall.Id });
+                        ////////generatedAssemblies[i].Disassemble();
                         /**/
                     }
                     /**/

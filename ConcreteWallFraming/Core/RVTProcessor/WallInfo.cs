@@ -33,7 +33,7 @@ namespace ConcreteWallFraming.Core.RVTProcessor
 
         public WallInfo(string name, Element wall, ElementId parentId, double wallThickness, List<CurveLoop> rawBounds, XYZ normal, XYZ origin, XYZ wallBasePoint) 
         {
-            if (wall.Id.IntegerValue == 1318311)
+            if (wall.Id.IntegerValue == 1156144)
             {
                 
             }
@@ -69,6 +69,12 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                     Bounds.Add(Rectangle.FromLines(lines));
                 }else if (lines.Count > 4)
                 {
+                    if (wall.Id.IntegerValue == 1156144)
+                    {
+
+                    }
+                    List<PDF_Analyzer.Geometry.Line> clonedLines = new List<PDF_Analyzer.Geometry.Line>(lines);
+                    //Loop _loop = new Loop(new List<PDF_Analyzer.Geometry.Line>(lines) );
                     List<List<PDF_Analyzer.Geometry.Line>> formedLines = new List<List<PDF_Analyzer.Geometry.Line>>();
                     // order lines
 
@@ -93,17 +99,19 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                     {
                         lines.ForEach(l =>
                         {
+                            int index = lines.IndexOf(l);
                             if (ml.IsContain(l))
                             {
-                                int index = lines.IndexOf(l);
                                 toBeRemoved.Add(index);
                                 //lines[index] = null;
                             }
+
                         });
                     }
                     foreach (int i in toBeRemoved)
                     {
                         lines[i] = null;
+                        clonedLines[i].IsInternal = false;
                     }
 
 
@@ -147,14 +155,18 @@ namespace ConcreteWallFraming.Core.RVTProcessor
 
 
                     // proceed
-                   //// formedLines.ForEach(_lines => Bounds.Add(Rectangle.FromLines(_lines)));
-
+                    //// formedLines.ForEach(_lines => Bounds.Add(Rectangle.FromLines(_lines)));
+                    Loop _loop = new Loop(clonedLines);
                     foreach (var _lines in formedLines)
                     {
-                       Rectangle r = Rectangle.FromLines(_lines);
-                        if (r == null)
+                        if (wall.Id.IntegerValue == 1156144)
                         {
                             
+                        }
+                        Rectangle r = Rectangle.FromLines(_lines);
+                        if (r != null)
+                        {
+                            r.Loop = _loop;
                         }
                         Bounds.Add(r);
                     }
