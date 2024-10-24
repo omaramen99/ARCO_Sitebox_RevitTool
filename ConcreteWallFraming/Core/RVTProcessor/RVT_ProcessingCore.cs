@@ -175,10 +175,15 @@ namespace ConcreteWallFraming.Core.RVTProcessor
             wallInfo = wallInfo.OrderBy(w => int.Parse(w.Name.Substring(1))).ToList();
             List<string> names = wallInfo.Where(wi => wi.IsValid && wi.Bounds.Any()).Select(wi => wi.Name).ToList();
             List<List<PDF_Analyzer.Geometry.Rectangle>> rectanglesLists = wallInfo.Where(wi => wi.IsValid && wi.Bounds.Any()).Select(wi => wi.Bounds).ToList();
+            double lumberThickness = 0.235026;
+            List<PDFSheetAssemblyData> PDFResult = PDF_Analyzer.Core.RectanglesAnalyze_Run(rectanglesLists, names, lumberThickness, false);
 
-            List<PDFSheetAssemblyData> PDFResult = PDF_Analyzer.Core.RectanglesAnalyze_Run(rectanglesLists, names, 0.2, false);
+            List<PDFSheetVertualAssemblyData> PDFVertualResult = PDF_Analyzer.Core.HelperPDFAnalyze_Run(false);
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
             List<AssemblyInstance> generatedAssemblies = new List<AssemblyInstance>();
+            List<ElementId> generatedAssembliesIds = new List<ElementId>();
+            List<string> generatedAssembliesNames = new List<string>();
+
             if (PDFResult.Any())
             {
                 ////LoadFamilies
@@ -262,12 +267,20 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                 ////////List<ElementId> lastSharedLumberIds = new List<ElementId> ();
                 ////////List<XYZ> lastSharedLumberLocations = new List<XYZ> ();
 
-
+                double callibrationValue = -1;
                 for (int i = 0; i < PDFResult.Count; i++)
                 {
                     try
                     {
+                        PDFSheetVertualAssemblyData vd = PDFVertualResult.Where(r => r.Name == PDFResult[i].Name).FirstOrDefault();
+                        //if (vd == null) continue;
+                        if(callibrationValue == -1 && vd != null) callibrationValue = PDFResult[i].Width / vd.wallRectangle.Width();
+
                         WallInfo wi = wallInfo.Where(w => w.Name == PDFResult[i].Name).FirstOrDefault();
+
+                       
+
+
                         ////////var panelInfo = wi.Wall.LookupParameter("Comments").AsString().Split(' ').ToList();
 
                         ////////if (lastWallGroup == panelInfo[1])
@@ -293,16 +306,16 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                         List<Element> assemblyElements = new List<Element>();
                         PDFSheetAssemblyData PDFData = PDFResult[i];
                         //symbol.LookupParameter($"H{i}").Set(0);
-                        double X = wi.WallBasePoint.X + (wi.Normal.X * PDFData.Height * 0.5 * 1.1);//i * 50;
-                        double Y = wi.WallBasePoint.Y + (wi.Normal.Y * PDFData.Height * 0.5 * 1.1);//0;
+                        double X = vd != null? (-75)+  callibrationValue * vd.wallRectangle.Center.X : wi.WallBasePoint.X + (wi.Normal.X * PDFData.Height * 0.5 * 1.1);//i * 50;
+                        double Y = vd != null? (215)+ -callibrationValue * vd.wallRectangle.Center.Y : wi.WallBasePoint.Y + (wi.Normal.Y * PDFData.Height * 0.5 * 1.1);//0;
                         double Z = lowestZ;//wi.WallBasePoint.Z;//0;
                         XYZ groupDirection = new XYZ();
                         ////////if (groupIndex != 0) 
                         ////////{
                         ////////    groupDirection = (new XYZ(X, Y, Z) - lastBasePoint).Normalize();
-                        ////////    X = X + (groupDirection.X * 0.2 *groupIndex);
-                        ////////    Y = Y + (groupDirection.Y * 0.2 *groupIndex);
-                        ////////    Z = Z + (groupDirection.Z * 0.2 *groupIndex);
+                        ////////    X = X + (groupDirection.X * lumberThickness *groupIndex);
+                        ////////    Y = Y + (groupDirection.Y * lumberThickness *groupIndex);
+                        ////////    Z = Z + (groupDirection.Z * lumberThickness *groupIndex);
                         ////////}
                         ////////lastBasePoint = new XYZ(X, Y, Z);
 
@@ -311,7 +324,11 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                         doc.Regenerate();
                         wallInstance.LookupParameter($"Unique").Set(PDFData.Name);
                         wallInstance.LookupParameter($"Allied_Panel").Set(wi.Name);
-                        wallInstance.LookupParameter($"Allied_Group").Set("TEST");//.Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
+                        wallInstance.LookupParameter($"Allied_Group").Set(vd != null ? vd.Group : "N/A");//.Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
+                        wi.Wall.LookupParameter($"Allied_Panel").Set(wi.Name);
+                        wi.Wall.LookupParameter($"Allied_Group").Set(vd != null ? vd.Group : "N/A");//.Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
+
+
                         wallInstance.LookupParameter($"W").Set(PDFData.Width);
                         wallInstance.LookupParameter($"H").Set(PDFData.Height);
                         wallInstance.LookupParameter($"Th").Set(wi.WallThickness);
@@ -376,10 +393,10 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                             double w = rec.Width;
                             double h = rec.Height;
                             lumberInstance.LookupParameter($"Allied_Panel").Set(wi.Name);
-                            lumberInstance.LookupParameter($"Allied_Group").Set("TEST"); //Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
+                            lumberInstance.LookupParameter($"Allied_Group").Set(vd != null ? vd.Group : "N/A"); //Set(panelInfo[1].Remove(panelInfo[1].Length - 1).Substring(1));
                             lumberInstance.LookupParameter($"W").Set(w);
                             lumberInstance.LookupParameter($"H").Set(h);
-                            lumberInstance.LookupParameter($"Th").Set(wi.WallThickness + 0.2);
+                            lumberInstance.LookupParameter($"Th").Set(wi.WallThickness + lumberThickness);
 
 
                             lumberInstance.LookupParameter($"Length").Set(w >= h ? w : h);
@@ -392,10 +409,12 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                         /**/
                         AssemblyInstance assemblyInstance = AssemblyInstance.Create(doc, assemblyElements.Select(e => e.Id).ToList(), categoryId);
                         /**/
-                        generatedAssemblies.Add(assemblyInstance);
+                        generatedAssemblies.Add(assemblyInstance); 
+                        generatedAssembliesIds.Add(assemblyInstance.Id);
+                        generatedAssembliesNames.Add(wi.Name);
                         //assemblyInstance.Name = PDFData.Name;
                     }
-                    catch (Exception)
+                    catch (Exception e)
                     {
 
 
@@ -423,16 +442,48 @@ namespace ConcreteWallFraming.Core.RVTProcessor
                     /**/
                     {
                         /**/
-                        generatedAssemblies[i].AssemblyTypeName = PDFResult[i].Name;
-                        WallInfo wi = wallInfo.Where(w => w.Name == PDFResult[i].Name).FirstOrDefault();
-                        if (Math.Abs(wi.Normal.X) > 0.001)
+                        //if (PDFResult[i].Name == "P33")
+                        //{
+                            
+                        //}
+                        int ind = generatedAssembliesNames.IndexOf(PDFResult[i].Name); if (ind == -1) continue;
+                        ElementId assemblyId = generatedAssembliesIds[ind]; if (assemblyId == ElementId.InvalidElementId) continue;
+                        AssemblyInstance generatedAssembly = doc.GetElement(assemblyId) as AssemblyInstance; if (generatedAssembly == null) continue;
+                        generatedAssembly.AssemblyTypeName = PDFResult[i].Name;
+
+                        PDFSheetVertualAssemblyData vd = PDFVertualResult.Where(r => r.Name == PDFResult[i].Name).FirstOrDefault();
+                        if (vd == null) 
                         {
-                            var bx = generatedAssemblies[i].get_BoundingBox(null);
-                            XYZ md = generatedAssemblies[i].GetCenter();// new XYZ((bx.Max.X + bx.Min.X) / 2, (bx.Max.Y + bx.Min.Y) / 2, (bx.Max.Z + bx.Min.Z) / 2);
-                            ElementTransformUtils.RotateElement(doc, generatedAssemblies[i].Id, Line.CreateUnbound(md, new XYZ(0, 0, 1)), 1.5708);
+                            WallInfo wi = wallInfo.Where(w => w.Name == PDFResult[i].Name).FirstOrDefault();
+                            if (Math.Abs(wi.Normal.X) > 0.001)
+                            {
+                                var bx = generatedAssembly.get_BoundingBox(null);
+                                XYZ md = generatedAssembly.GetCenter();// new XYZ((bx.Max.X + bx.Min.X) / 2, (bx.Max.Y + bx.Min.Y) / 2, (bx.Max.Z + bx.Min.Z) / 2);
+                                ElementTransformUtils.RotateElement(doc, assemblyId, Line.CreateUnbound(md, new XYZ(0, 0, 1)), 1.5708);
+                            }
+                            //generatedAssembly.Disassemble();
+                            //continue;
                         }
-                        generatedAssemblies[i].AddMemberIds(new List<ElementId>() { wi.Wall.Id });
-                        ////////generatedAssemblies[i].Disassemble();
+                        else
+                        {
+                            WallInfo wi = wallInfo.Where(w => w.Name == PDFResult[i].Name).FirstOrDefault();
+                            var rec = vd.wallRectangle;
+                            if ((rec.Width() >= rec.Height() && PDFResult[i].Height > PDFResult[i].Width) || (rec.Width() <= rec.Height() && PDFResult[i].Height < PDFResult[i].Width))
+                            {
+                                var bx = generatedAssembly.get_BoundingBox(null);
+                                XYZ md = generatedAssembly.GetCenter();// new XYZ((bx.Max.X + bx.Min.X) / 2, (bx.Max.Y + bx.Min.Y) / 2, (bx.Max.Z + bx.Min.Z) / 2);
+                                ElementTransformUtils.RotateElement(doc, generatedAssembly.Id, Line.CreateUnbound(md, new XYZ(0, 0, 1)), 1.5708);
+                            }
+                            generatedAssembly.Disassemble();
+                        }
+                        //if (Math.Abs(wi.Normal.X) > 0.001)
+                        //{
+                        //    var bx = generatedAssembly.get_BoundingBox(null);
+                        //    XYZ md = generatedAssembly.GetCenter();// new XYZ((bx.Max.X + bx.Min.X) / 2, (bx.Max.Y + bx.Min.Y) / 2, (bx.Max.Z + bx.Min.Z) / 2);
+                        //    ElementTransformUtils.RotateElement(doc, generatedAssemblies[i].Id, Line.CreateUnbound(md, new XYZ(0, 0, 1)), 1.5708);
+                        //}
+
+                        //generatedAssembly.AddMemberIds(new List<ElementId>() { wi.Wall.Id });
                         /**/
                     }
                     /**/
